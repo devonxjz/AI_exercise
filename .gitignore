@@ -1,6 +1,5 @@
-/__pycache__
-/.agents
-/.antigravity
+__pycache__/
+.agents/
+.antigravitycli/
 /docs
 /test
-

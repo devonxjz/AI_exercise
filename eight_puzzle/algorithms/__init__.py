@@ -3,6 +3,7 @@ from eight_puzzle.algorithms.dfs import DFSSolver
 from eight_puzzle.algorithms.ucs import UCSSolver
 from eight_puzzle.algorithms.a_star import AStarSolver
 from eight_puzzle.algorithms.greedy import GreedySolver
+from eight_puzzle.algorithms.hill_climbing import HillClimbingSolver
 
 # Manual Registry of Solvers
 SOLVER_REGISTRY = {
@@ -10,7 +11,8 @@ SOLVER_REGISTRY = {
     "DFS (Depth-First Search)": DFSSolver,
     "UCS (Uniform Cost Search)": UCSSolver,
     "A* Search (Manhattan Distance)": AStarSolver,
-    "Greedy Best-First Search": GreedySolver
+    "Greedy Best-First Search": GreedySolver,
+    "Hill Climbing (Local Search)": HillClimbingSolver
 }
 
 # Theme definitions for each algorithm
@@ -39,5 +41,11 @@ ALGORITHM_THEMES = {
         "accent": "#FAB387",      # Pastel Peach/Orange
         "accent_bg": "#382A25",
         "description": "Heuristic: Manhattan Distance (Greedy Best-First Search)"
+    },
+    "Hill Climbing (Local Search)": {
+        "accent": "#CBA6F7",      # Pastel Lavender
+        "accent_bg": "#3E2E4F",
+        "description": "Heuristic: Manhattan Distance (Simple Hill Climbing - stops if no neighbor is strictly better)"
     }
 }
+
