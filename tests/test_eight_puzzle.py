@@ -66,5 +66,12 @@ class TestEightPuzzleSolvers(unittest.TestCase):
         self.assertEqual(len(path) - 1, 1)
         self.assertEqual(path[-1], self.goal_state)
 
+    def test_greedy_solver(self):
+        from eight_puzzle.algorithms.greedy import GreedySolver
+        solver = GreedySolver(self.start_state, self.goal_state)
+        path = solver.solve_all()
+        self.assertEqual(len(path) - 1, 1)
+        self.assertEqual(path[-1], self.goal_state)
+
 if __name__ == "__main__":
     unittest.main()
