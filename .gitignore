@@ -1,4 +1,6 @@
 /__pycache__
-/.agent
-
+/.agents
+/.antigravity
 /docs
+/test
+

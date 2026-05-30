@@ -1,282 +1,58 @@
-import random
-import heapq
 import time
 import tkinter as tk
 from tkinter import ttk, messagebox
 import threading
 
-class EightPuzzle:
-    """
-    Model: Tracks the state of the 3x3 8-puzzle board and manages A* search.
-    States are represented as 3x3 tuples of tuples (hashable, immutable).
-    0 represents the empty cell.
-    """
-    def __init__(self, start_state=None):
-        self.goal_state = ((1, 2, 3), 
-                           (4, 5, 6), 
-                           (7, 8, 0))
-        
-        if start_state is not None:
-            # Ensure it is a tuple of tuples
-            self.current_state = tuple(tuple(row) for row in start_state)
-        else:
-            self.current_state = self.generate_random_solvable()
-            
-        self.start_state = self.current_state
-        
-        # Search state variables
-        self.frontier = []        # Priority queue containing: (f, counter, g, h, state_grid)
-        self.explored = set()     # Closed List: set of grids
-        self.parent_map = {}      # Maps: neighbor_grid -> (parent_grid, action)
-        self.counter = 0          # Incrementing counter for heapq tie-breaking
-        self.state = "idle"       # "idle", "searching", "solved", "unsolvable"
-        
-        # Statistics
-        self.nodes_expanded = 0
-        self.max_frontier_size = 0
-        self.solution_path = []
-        self.path_cost = 0
-
-    def count_inversions(self, grid):
-        """
-        Calculates the number of inversions in the grid (ignoring the blank tile 0).
-        An inversion is any pair (a, b) such that a > b and a appears before b.
-        """
-        flat = [val for row in grid for val in row if val != 0]
-        inversions = 0
-        for i in range(len(flat)):
-            for j in range(i + 1, len(flat)):
-                if flat[i] > flat[j]:
-                    inversions += 1
-        return inversions
-
-    def is_solvable(self, grid):
-        """
-        For a standard goal state where the blank is in the bottom-right corner
-        (which has 0 inversions - even), an initial state is solvable if and only if
-        the number of inversions is even.
-        """
-        return self.count_inversions(grid) % 2 == 0
-
-    def generate_random_solvable(self):
-        """
-        Shuffles the tiles randomly until a mathematically solvable configuration is found.
-        """
-        while True:
-            nums = list(range(9))
-            random.shuffle(nums)
-            grid = tuple(tuple(nums[i*3 : (i+1)*3]) for i in range(3))
-            if self.is_solvable(grid):
-                return grid
-
-    def get_misplaced_tiles(self, grid):
-        """
-        Heuristic h(n): counts the number of non-zero tiles that are not in their
-        correct goal position.
-        """
-        count = 0
-        for r in range(3):
-            for c in range(3):
-                val = grid[r][c]
-                if val != 0 and val != self.goal_state[r][c]:
-                    count += 1
-        return count
-
-    def get_neighbors(self, grid):
-        """
-        Finds the empty tile 0 and moves it in valid directions (UP, DOWN, LEFT, RIGHT).
-        Returns a list of tuples: (new_grid, action_taken)
-        """
-        r, c = -1, -1
-        # Find 0 position
-        for i in range(3):
-            for j in range(3):
-                if grid[i][j] == 0:
-                    r, c = i, j
-                    break
-        
-        neighbors = []
-        # Action indicates where the empty tile moves
-        moves = [(-1, 0, "UP"), (1, 0, "DOWN"), (0, -1, "LEFT"), (0, 1, "RIGHT")]
-        
-        for dr, dc, action in moves:
-            nr, nc = r + dr, c + dc
-            if 0 <= nr < 3 and 0 <= nc < 3:
-                # Convert grid to mutable list of lists
-                temp = [list(row) for row in grid]
-                # Swap values
-                temp[r][c], temp[nr][nc] = temp[nr][nc], temp[r][c]
-                new_grid = tuple(tuple(row) for row in temp)
-                neighbors.append((new_grid, action))
-                
-        return neighbors
-
-    def init_search(self):
-        """
-        Prepares the Frontier, Explored set, parent map, and stats to begin A* search.
-        """
-        self.counter = 0
-        self.frontier = []
-        self.explored = set()
-        self.parent_map = {self.current_state: (None, None)}
-        
-        g = 0
-        h = self.get_misplaced_tiles(self.current_state)
-        f = g + h
-        
-        heapq.heappush(self.frontier, (f, self.counter, g, h, self.current_state))
-        self.state = "searching"
-        self.nodes_expanded = 0
-        self.max_frontier_size = 1
-        self.solution_path = []
-        self.path_cost = 0
-
-    def step_search(self):
-        """
-        Performs ONE expansion step of the A* search.
-        Returns a log dictionary of details for the UI console, or None if finished.
-        """
-        if self.state != "searching":
-            return None
-            
-        if not self.frontier:
-            self.state = "unsolvable"
-            return {
-                "status": "failed",
-                "log": "Frontier is empty. No solution exists for this configuration!"
-            }
-            
-        # Pop the lowest f value node
-        f, cnt, g, h, curr_grid = heapq.heappop(self.frontier)
-        
-        # Skip if already explored
-        while curr_grid in self.explored:
-            if not self.frontier:
-                self.state = "unsolvable"
-                return {
-                    "status": "failed",
-                    "log": "Frontier is empty. No solution exists!"
-                }
-            f, cnt, g, h, curr_grid = heapq.heappop(self.frontier)
-            
-        # Mark as explored
-        self.explored.add(curr_grid)
-        self.nodes_expanded += 1
-        self.current_state = curr_grid
-        
-        # Build logs before potential return
-        flat_curr = [val for row in curr_grid for val in row]
-        log_entry = {
-            "status": "searching",
-            "node_explored": {
-                "grid": curr_grid,
-                "flat": flat_curr,
-                "f": f,
-                "g": g,
-                "h": h
-            },
-            "frontier_size": len(self.frontier),
-            "explored_size": len(self.explored),
-            # Extract first few elements in frontier for display
-            "frontier_sample": [(item[0], item[2], item[3], [v for r in item[4] for v in r]) for item in sorted(self.frontier)[:5]],
-            "explored_sample": [[v for r in item for v in r] for item in list(self.explored)[-5:]]
-        }
-        
-        # Goal check
-        if curr_grid == self.goal_state:
-            self.state = "solved"
-            self.reconstruct_path()
-            log_entry["status"] = "solved"
-            log_entry["solution_length"] = len(self.solution_path) - 1
-            log_entry["log"] = f"🎯 Success! Goal state reached.\nPath length: {len(self.solution_path) - 1} moves.\nNodes expanded: {self.nodes_expanded}"
-            return log_entry
-
-        # Expand neighbors
-        for neighbor_grid, action in self.get_neighbors(curr_grid):
-            if neighbor_grid not in self.explored:
-                # With consistent heuristic (like misplaced tiles), the first time we discover
-                # a node, it is not necessarily the optimal path if we use normal A*, but in 8-puzzle
-                # with Hamming, h(n) is consistent, so first pop is optimal. We check if we have 
-                # a better path (smaller g) if we have reached it before, or just register it if not.
-                g_new = g + 1
-                h_new = self.get_misplaced_tiles(neighbor_grid)
-                f_new = g_new + h_new
-                
-                # Check if this state was seen before
-                is_better = False
-                if neighbor_grid not in self.parent_map:
-                    is_better = True
-                
-                if is_better:
-                    self.parent_map[neighbor_grid] = (curr_grid, action)
-                    self.counter += 1
-                    heapq.heappush(self.frontier, (f_new, self.counter, g_new, h_new, neighbor_grid))
-                    
-        self.max_frontier_size = max(self.max_frontier_size, len(self.frontier))
-        return log_entry
-
-    def reconstruct_path(self):
-        """
-        Traces back the parent pointers from the goal state to the start state.
-        Stores the sequence of grids in self.solution_path.
-        """
-        path = []
-        curr = self.goal_state
-        while curr is not None:
-            path.append(curr)
-            curr, action = self.parent_map.get(curr, (None, None))
-        path.reverse()
-        self.solution_path = path
-        self.path_cost = len(path) - 1
-
-    def solve_all(self):
-        """
-        Executes the entire search instantly in the background.
-        """
-        self.init_search()
-        while self.state == "searching":
-            self.step_search()
-        return self.solution_path
-
+from eight_puzzle.board import PuzzleBoard
+from eight_puzzle.algorithms import SOLVER_REGISTRY, ALGORITHM_THEMES
 
 class EightPuzzleApp:
     """
     View / Controller: Builds a high-fidelity Tkinter GUI for the 8-puzzle.
-    Uses custom styles, dynamic colored blocks, step searching, and console logs.
+    Uses Catppuccin Mocha theme, dynamic colored elements, step-by-step playback,
+    and a unified console log interface.
     """
     def __init__(self, root):
         self.root = root
-        self.root.title("8-Puzzle Solver AI - Hamming A*")
-        self.root.geometry("1080x720")
+        self.root.title("8-Puzzle AI Solver - Multi-Algorithm Console")
+        self.root.geometry("1120x760")
         self.root.configure(bg="#1E1E2E")
         
-        # Initialize Engine Model
-        self.engine = EightPuzzle()
-        self.initial_custom_state = self.engine.current_state
+        # Current Board State (starts with a random solvable configuration)
+        self.initial_custom_state = PuzzleBoard.generate_random_solvable()
         
-        # Playback & Search variables
+        # Selected Algorithm
+        self.algo_list = list(SOLVER_REGISTRY.keys())
+        self.selected_algo_name = "A* Search (Manhattan Distance)"
+        
+        # Initialize Engine with selected algorithm
+        self.engine = SOLVER_REGISTRY[self.selected_algo_name](self.initial_custom_state)
+        
+        # Playback & Threading variables
         self.playback_index = 0
         self.auto_solve_running = False
         self.auto_search_running = False
-        self.animation_speed = 300 # milliseconds
+        self.animation_speed = 300  # milliseconds
         
-        # Setup UI layout
+        # Setup UI
         self.setup_styles()
         self.build_ui()
         
-        # Initial draw
+        # Initial render and welcome log
         self.update_board_view()
-        self.log_to_console("🚀 8-Puzzle Simulator initialized.\nGoal state is [1, 2, 3, 4, 5, 6, 7, 8, 0].\nClick 'Random' to generate a solvable start, or manually click tiles in idle mode to shift them.\n")
+        self.on_algo_changed()
+        self.log_to_console("🚀 8-Puzzle Simulator initialized.\nGoal state is [1, 2, 3, 4, 5, 6, 7, 8, 0].\nSelect an algorithm and click '🎲 Random State' or click tiles to modify state.\n")
 
     def setup_styles(self):
-        # Configure fonts and general ttk styling
         self.style = ttk.Style()
         self.style.theme_use("clam")
         
-        # Custom button and scrollbar colors to match premium dark theme
+        # Base Dark Theme styling
         self.style.configure(".", bg="#1E1E2E", foreground="#CDD6F4")
         self.style.configure("TFrame", background="#1E1E2E")
+        self.style.configure("LabelFrame", background="#1E1E2E", foreground="#A6ADC8")
         
+        # Clean button styling
         self.style.configure("TButton", 
                              background="#313244", 
                              foreground="#CDD6F4", 
@@ -288,6 +64,7 @@ class EightPuzzleApp:
                        background=[("active", "#45475A"), ("disabled", "#181825")],
                        foreground=[("disabled", "#585B70")])
                        
+        # Primary Action Button
         self.style.configure("Primary.TButton", 
                              background="#89B4FA", 
                              foreground="#11111B",
@@ -295,6 +72,7 @@ class EightPuzzleApp:
         self.style.map("Primary.TButton", 
                        background=[("active", "#B4BEFE"), ("disabled", "#181825")])
 
+        # Playback Active Button
         self.style.configure("Accent.TButton", 
                              background="#A6E3A1", 
                              foreground="#11111B",
@@ -302,27 +80,47 @@ class EightPuzzleApp:
         self.style.map("Accent.TButton", 
                        background=[("active", "#94E2D5"), ("disabled", "#181825")])
 
+        # ComboBox Styling
+        self.style.configure("TCombobox", 
+                             fieldbackground="#313244", 
+                             background="#45475A", 
+                             foreground="#CDD6F4", 
+                             arrowcolor="#CDD6F4")
+        self.root.option_add('*TCombobox*Listbox.background', '#313244')
+        self.root.option_add('*TCombobox*Listbox.foreground', '#CDD6F4')
+        self.root.option_add('*TCombobox*Listbox.selectBackground', '#89B4FA')
+        self.root.option_add('*TCombobox*Listbox.selectForeground', '#11111B')
+
     def build_ui(self):
-        # Main layout: Left sidebar/board, Right console/stats
+        # Main layout splitter
         self.main_pane = tk.PanedWindow(self.root, bg="#1E1E2E", bd=0, sashwidth=4, sashpad=2)
         self.main_pane.pack(fill=tk.BOTH, expand=True)
 
-        # ----------------- LEFT PANE: Grid and Controls -----------------
+        # ----------------- LEFT PANE: Grid, Selector and Controls -----------------
         self.left_frame = tk.Frame(self.main_pane, bg="#1E1E2E", padx=15, pady=15)
-        self.main_pane.add(self.left_frame, minsize=420)
+        self.main_pane.add(self.left_frame, minsize=460)
 
-        # Header Title
-        title_label = tk.Label(self.left_frame, text="8-PUZZLE SOLVER (A*)", bg="#1E1E2E", fg="#89B4FA", font=("Segoe UI", 18, "bold"))
-        title_label.pack(anchor="w", pady=(0, 2))
+        # Title Block
+        self.title_label = tk.Label(self.left_frame, text="8-PUZZLE SOLVER AI", bg="#1E1E2E", fg="#89B4FA", font=("Segoe UI", 18, "bold"))
+        self.title_label.pack(anchor="w", pady=(0, 2))
         
-        subtitle_label = tk.Label(self.left_frame, text="Heuristic: Misplaced Tiles (Hamming Distance)", bg="#1E1E2E", fg="#A6ADC8", font=("Segoe UI", 10, "italic"))
-        subtitle_label.pack(anchor="w", pady=(0, 15))
+        self.subtitle_label = tk.Label(self.left_frame, text="Heuristic: Misplaced Tiles (Hamming Distance)", bg="#1E1E2E", fg="#A6ADC8", font=("Segoe UI", 10, "italic"))
+        self.subtitle_label.pack(anchor="w", pady=(0, 10))
 
-        # The 3x3 Tile Grid Canvas Frame
+        # Algorithm Selection Frame
+        selector_frame = tk.LabelFrame(self.left_frame, text=" Select Algorithm (Chọn thuật toán) ", bg="#1E1E2E", fg="#A6ADC8", font=("Segoe UI", 9, "bold"), padx=10, pady=8)
+        selector_frame.pack(fill=tk.X, pady=(0, 10))
+        
+        tk.Label(selector_frame, text="Algorithm:", bg="#1E1E2E", fg="#CDD6F4", font=("Segoe UI", 10)).pack(side=tk.LEFT, padx=(0, 10))
+        self.algo_combobox = ttk.Combobox(selector_frame, values=self.algo_list, state="readonly", width=35, style="TCombobox")
+        self.algo_combobox.set(self.selected_algo_name)
+        self.algo_combobox.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.algo_combobox.bind("<<ComboboxSelected>>", self.on_algo_changed)
+
+        # 3x3 Tile Grid Canvas Frame
         self.grid_frame = tk.Frame(self.left_frame, bg="#11111B", bd=3, relief="flat", highlightbackground="#313244", highlightthickness=2)
         self.grid_frame.pack(pady=10, fill=tk.BOTH, expand=True)
         
-        # Grid layout configure
         for r in range(3):
             self.grid_frame.rowconfigure(r, weight=1, uniform="equal")
             self.grid_frame.columnconfigure(r, weight=1, uniform="equal")
@@ -358,8 +156,8 @@ class EightPuzzleApp:
         self.btn_auto_search = ttk.Button(self.controls_frame, text="▶️ Auto Search Steps", style="TButton", command=self.toggle_auto_search)
         self.btn_auto_search.grid(row=1, column=1, padx=4, pady=4, sticky="ew")
 
-        # Playback controls row (initially hidden or disabled until solved)
-        self.playback_frame = tk.LabelFrame(self.controls_frame, text="Playback controls (Solution found)", bg="#1E1E2E", fg="#A6ADC8", font=("Segoe UI", 9), padx=5, pady=5)
+        # Playback controls frame
+        self.playback_frame = tk.LabelFrame(self.controls_frame, text=" Playback controls (Sau khi giải xong) ", bg="#1E1E2E", fg="#A6ADC8", font=("Segoe UI", 9), padx=5, pady=5)
         self.playback_frame.grid(row=2, column=0, columnspan=2, pady=10, sticky="ew")
         self.playback_frame.columnconfigure((0,1,2,3), weight=1)
         
@@ -387,7 +185,7 @@ class EightPuzzleApp:
 
         # ----------------- RIGHT PANE: Stats and Terminal Logs -----------------
         self.right_frame = tk.Frame(self.main_pane, bg="#1E1E2E", padx=15, pady=15)
-        self.main_pane.add(self.right_frame, minsize=520)
+        self.main_pane.add(self.right_frame, minsize=540)
 
         # Statistics Dashboard
         stats_header = tk.Label(self.right_frame, text="ALGORITHM STATISTICS", bg="#1E1E2E", fg="#F9E2AF", font=("Segoe UI", 12, "bold"))
@@ -396,49 +194,48 @@ class EightPuzzleApp:
         self.stats_container = tk.Frame(self.right_frame, bg="#252538", bd=1, relief="flat", highlightbackground="#313244", highlightthickness=1)
         self.stats_container.pack(fill=tk.X, pady=(0, 15))
         
-        # Grid system inside stats
         for i in range(2):
             self.stats_container.rowconfigure(i, weight=1)
             self.stats_container.columnconfigure(i, weight=1)
             
-        self.stat_nodes = self.create_stat_card(self.stats_container, "Nodes Expanded (Tập mở rộng)", "0", 0, 0)
-        self.stat_frontier = self.create_stat_card(self.stats_container, "Max Frontier (Biên lớn nhất)", "0", 0, 1)
-        self.stat_depth = self.create_stat_card(self.stats_container, "Solution Depth (Số bước giải)", "0", 1, 0)
+        self.stat_nodes = self.create_stat_card(self.stats_container, "Nodes Expanded (Số nút duyệt)", "0", 0, 0)
+        self.stat_frontier = self.create_stat_card(self.stats_container, "Max Frontier (Biên hàng đợi)", "0", 0, 1)
+        self.stat_depth = self.create_stat_card(self.stats_container, "Solution Depth / Path Cost", "0", 1, 0)
         self.stat_status = self.create_stat_card(self.stats_container, "Search Status (Trạng thái)", "IDLE", 1, 1, color="#89B4FA")
 
         # Scrolling terminal log
-        log_header = tk.Label(self.right_frame, text="A* SEARCH CONSOLE TERMINAL", bg="#1E1E2E", fg="#CDD6F4", font=("Segoe UI", 12, "bold"))
+        log_header = tk.Label(self.right_frame, text="SEARCH CONSOLE TERMINAL", bg="#1E1E2E", fg="#CDD6F4", font=("Segoe UI", 12, "bold"))
         log_header.pack(anchor="w", pady=(0, 8))
 
         self.console_frame = tk.Frame(self.right_frame, bg="#11111B", bd=2, relief="flat")
         self.console_frame.pack(fill=tk.BOTH, expand=True)
 
+        # Console Text Area
         self.console_text = tk.Text(self.console_frame, 
                                     bg="#11111B", 
                                     fg="#A6E3A1", 
                                     insertbackground="#CDD6F4", 
-                                    font=("Consolas", 9),
+                                    font=("Consolas", 10),
                                     bd=0,
-                                    padx=10,
-                                    pady=10)
+                                    padx=12,
+                                    pady=12)
         self.console_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         self.scrollbar = ttk.Scrollbar(self.console_frame, orient=tk.VERTICAL, command=self.console_text.yview)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.console_text.configure(yscrollcommand=self.scrollbar.set)
         
-        # Console configurations
         self.console_text.configure(state="disabled")
 
     def create_stat_card(self, parent, title, value, r, c, color="#F9E2AF"):
-        card = tk.Frame(parent, bg="#252538", padx=10, pady=8, bd=1, relief="flat")
+        card = tk.Frame(parent, bg="#252538", padx=12, pady=10, bd=1, relief="flat")
         card.grid(row=r, column=c, sticky="nsew", padx=2, pady=2)
         
-        lbl_title = tk.Label(card, text=title, bg="#252538", fg="#A6ADC8", font=("Segoe UI", 8))
+        lbl_title = tk.Label(card, text=title, bg="#252538", fg="#A6ADC8", font=("Segoe UI", 9))
         lbl_title.pack(anchor="w")
         
-        lbl_val = tk.Label(card, text=value, bg="#252538", fg=color, font=("Segoe UI", 14, "bold"))
-        lbl_val.pack(anchor="w", pady=(2, 0))
+        lbl_val = tk.Label(card, text=value, bg="#252538", fg=color, font=("Segoe UI", 15, "bold"))
+        lbl_val.pack(anchor="w", pady=(3, 0))
         return lbl_val
 
     def log_to_console(self, text):
@@ -446,7 +243,16 @@ class EightPuzzleApp:
         self.console_text.insert(tk.END, text + "\n")
         self.console_text.see(tk.END)
         self.console_text.configure(state="disabled")
-        print(text) # Also output to terminal for console logs requested by the user
+        try:
+            print(text)
+        except Exception:
+            try:
+                # Fallback to printing with replaced characters
+                import sys
+                encoding = sys.stdout.encoding or 'utf-8'
+                print(text.encode(encoding, errors='replace').decode(encoding))
+            except Exception:
+                pass
 
     def clear_console(self):
         self.console_text.configure(state="normal")
@@ -454,7 +260,6 @@ class EightPuzzleApp:
         self.console_text.configure(state="disabled")
 
     def update_board_view(self):
-        # Redraw tiles based on self.engine.current_state
         grid = self.engine.current_state
         goal = self.engine.goal_state
         
@@ -466,17 +271,15 @@ class EightPuzzleApp:
                 if val == 0:
                     btn.configure(text="", bg="#11111B", activebackground="#11111B", state="disabled")
                 else:
-                    # Styling: green border/glow if correctly placed, amber/white otherwise
+                    # Highlight correct positions
                     is_correct = (val == goal[r][c])
-                    bg_color = "#313244" # Normal slate tile
-                    fg_color = "#CDD6F4" # Off-white text
                     
                     if is_correct:
-                        bg_color = "#253825" # Soft green background
-                        fg_color = "#A6E3A1" # Neon green text
+                        bg_color = "#253825"  # Soft green
+                        fg_color = "#A6E3A1"  # Bright green
                     else:
-                        bg_color = "#383125" # Soft amber background
-                        fg_color = "#F9E2AF" # Neon amber text
+                        bg_color = "#383125"  # Soft amber
+                        fg_color = "#F9E2AF"  # Bright amber
                         
                     btn.configure(text=str(val), 
                                   bg=bg_color, 
@@ -484,14 +287,39 @@ class EightPuzzleApp:
                                   activebackground="#45475A", 
                                   state="normal")
 
+    def on_algo_changed(self, event=None):
+        self.stop_all_threads()
+        self.selected_algo_name = self.algo_combobox.get()
+        
+        # Get theme configuration for active algorithm
+        theme = ALGORITHM_THEMES.get(self.selected_algo_name, {
+            "accent": "#CDD6F4",
+            "accent_bg": "#313244",
+            "description": "8-Puzzle Search solver"
+        })
+        
+        # Update colors & fonts in UI dynamically based on algorithm theme
+        self.title_label.configure(fg=theme["accent"])
+        self.subtitle_label.configure(text=theme["description"])
+        
+        # Reconfigure console text color to match the selected algorithm accent
+        self.console_text.configure(fg=theme["accent"])
+        
+        # Reset engine and clean state
+        self.engine = SOLVER_REGISTRY[self.selected_algo_name](self.initial_custom_state)
+        self.clear_search_state()
+        self.update_board_view()
+        self.clear_console()
+        self.log_to_console(f"🔄 Switched algorithm to: {self.selected_algo_name}")
+        self.log_to_console(f"Configured visual theme to {theme['accent']}.\n")
+
     def on_tile_clicked(self, r, c):
-        # In manual mode (idle state), clicking a tile adjacent to 0 swaps it with 0.
         if self.engine.state not in ("idle", "solved"):
             return
             
         grid = [list(row) for row in self.engine.current_state]
         
-        # Find 0
+        # Find position of 0
         zr, zc = -1, -1
         for i in range(3):
             for j in range(3):
@@ -499,15 +327,16 @@ class EightPuzzleApp:
                     zr, zc = i, j
                     break
                     
-        # Check adjacency
+        # Check adjacency to empty cell (0)
         if abs(zr - r) + abs(zc - c) == 1:
-            # Swap
             grid[zr][zc], grid[r][c] = grid[r][c], grid[zr][zc]
-            self.engine.current_state = tuple(tuple(row) for row in grid)
-            self.initial_custom_state = self.engine.current_state
+            self.initial_custom_state = tuple(tuple(row) for row in grid)
             
             # Check solvability
-            solvable = self.engine.is_solvable(self.engine.current_state)
+            solvable = PuzzleBoard.is_solvable(self.initial_custom_state)
+            
+            # Recreate Solver engine
+            self.engine = SOLVER_REGISTRY[self.selected_algo_name](self.initial_custom_state)
             
             self.update_board_view()
             self.clear_search_state()
@@ -516,22 +345,25 @@ class EightPuzzleApp:
                 self.stat_status.configure(text="IDLE", fg="#89B4FA")
             else:
                 self.stat_status.configure(text="UNSOLVABLE", fg="#F38BA8")
-                self.log_to_console("⚠️ WARNING: The custom state is mathematically UNSOLVABLE!\nTry swapping adjacent tiles to make it solvable.\n")
+                self.log_to_console("⚠️ WARNING: The custom state is mathematically UNSOLVABLE (odd inversion count)!\nSwap two adjacent numbers to fix it.\n")
 
     def on_random(self):
         self.stop_all_threads()
         self.clear_console()
         
-        grid = self.engine.generate_random_solvable()
-        self.engine = EightPuzzle(grid)
+        # Generate new random solvable grid
+        grid = PuzzleBoard.generate_random_solvable()
         self.initial_custom_state = grid
+        
+        # Recreate engine
+        self.engine = SOLVER_REGISTRY[self.selected_algo_name](self.initial_custom_state)
         
         self.playback_index = 0
         self.update_board_view()
         self.clear_search_state()
         
         flat = [val for row in grid for val in row]
-        self.log_to_console(f"🎲 Generated new random solvable initial state:\n   {flat[:3]}\n   {flat[3:6]}\n   {flat[6:9]}\nInversions: {self.engine.count_inversions(grid)} (Even -> Solvable)\n")
+        self.log_to_console(f"🎲 Generated random solvable start state:\n   {flat[:3]}\n   {flat[3:6]}\n   {flat[6:9]}\nInversions: {PuzzleBoard.count_inversions(grid)} (Even -> Solvable)\n")
 
     def clear_search_state(self):
         self.engine.state = "idle"
@@ -539,7 +371,7 @@ class EightPuzzleApp:
         self.engine.nodes_expanded = 0
         self.engine.max_frontier_size = 0
         
-        # Update UI stats
+        # Update UI labels
         self.stat_nodes.configure(text="0")
         self.stat_frontier.configure(text="0")
         self.stat_depth.configure(text="0")
@@ -557,59 +389,90 @@ class EightPuzzleApp:
         self.btn_play.configure(text="▶️ Play")
         self.btn_auto_search.configure(text="▶️ Auto Search Steps")
 
+    def set_controls_state(self, state):
+        self.btn_random.configure(state=state)
+        self.btn_solve_instantly.configure(state=state)
+        self.btn_step_search.configure(state=state)
+        self.btn_auto_search.configure(state=state)
+        self.algo_combobox.configure(state=state)
+
     def on_solve_instantly(self):
         self.stop_all_threads()
         self.clear_console()
         
-        # Solvability check
-        if not self.engine.is_solvable(self.initial_custom_state):
+        if not PuzzleBoard.is_solvable(self.initial_custom_state):
             messagebox.showerror("Error", "The current puzzle is mathematically unsolvable!")
             return
             
-        self.log_to_console("⚡ Solving instantly with A* (Misplaced Tiles Heuristic)...")
+        self.log_to_console(f"⚡ Solving instantly using {self.selected_algo_name}...")
+        self.stat_status.configure(text="SEARCHING", fg="#F9E2AF")
+        
+        # Disable controls to prevent concurrent searches
+        self.set_controls_state("disabled")
+        
+        # Start search in background thread
+        threading.Thread(target=self.solve_instantly_background, daemon=True).start()
+
+    def solve_instantly_background(self):
         start_time = time.time()
         
-        # Setup engine from original custom start
-        self.engine = EightPuzzle(self.initial_custom_state)
+        # Re-initialize search
+        self.engine = SOLVER_REGISTRY[self.selected_algo_name](self.initial_custom_state)
         self.engine.init_search()
         
-        # Keep stepping until solved
         logs = []
+        iterations = 0
         while self.engine.state == "searching":
             step_log = self.engine.step_search()
             if step_log:
-                logs.append(step_log)
+                if len(logs) < 100:
+                    logs.append(step_log)
+                else:
+                    # Keep memory overhead low by replacing the last log
+                    logs[-1] = step_log
+            
+            iterations += 1
+            if iterations % 1000 == 0:
+                time.sleep(0.001)  # Yield CPU to the GUI main thread to keep it responsive
                 
         elapsed = time.time() - start_time
         
+        # Dispatch UI update back to main thread
+        self.root.after(0, lambda: self.solve_instantly_ui_callback(elapsed, logs))
+
+    def solve_instantly_ui_callback(self, elapsed, logs):
+        # Enable controls back
+        self.set_controls_state("normal")
+        self.algo_combobox.configure(state="readonly")
+        
         if self.engine.state == "solved":
-            # Output full summary and final steps
+            theme = ALGORITHM_THEMES.get(self.selected_algo_name, {"accent": "#A6E3A1"})
+            
             self.log_to_console(f"🎯 Solved in {elapsed:.4f} seconds!")
             self.log_to_console(f"   Nodes expanded: {self.engine.nodes_expanded}")
             self.log_to_console(f"   Max Frontier size: {self.engine.max_frontier_size}")
-            self.log_to_console(f"   Optimal solution path depth: {self.engine.path_cost} moves.")
+            self.log_to_console(f"   Solution path depth: {self.engine.path_cost} moves.")
             
-            # Print a concise representation of the moves in console
             self.log_to_console("\n📋 SOLUTION PATH TRANSITIONS:")
             for i, step_state in enumerate(self.engine.solution_path):
                 flat = [v for r in step_state for v in r]
                 self.log_to_console(f"   Step {i}: {flat}")
             
-            # Print last step's search details
             if logs:
                 last = logs[-1]
+                node = last['node_explored']
                 self.log_to_console(f"\n🔬 LAST EXPLORED STATE DETAIL:")
-                self.log_to_console(f"   - Current Node: {last['node_explored']['flat']} (f={last['node_explored']['f']}, g={last['node_explored']['g']}, h={last['node_explored']['h']})")
+                self.log_to_console(f"   - Current Node: {node['flat']} (g={node['g']}, h={node['h']}, f={node['f']})")
                 self.log_to_console(f"   - Frontier Size: {last['frontier_size']}")
                 self.log_to_console(f"   - Explored Size: {last['explored_size']}")
                 
-            # Update stats
+            # Update stats UI
             self.stat_nodes.configure(text=str(self.engine.nodes_expanded))
             self.stat_frontier.configure(text=str(self.engine.max_frontier_size))
             self.stat_depth.configure(text=str(self.engine.path_cost))
-            self.stat_status.configure(text="SOLVED", fg="#A6E3A1")
+            self.stat_status.configure(text="SOLVED", fg=theme["accent"])
             
-            # Enable playback
+            # Enable playback controls
             self.playback_index = 0
             self.engine.current_state = self.engine.solution_path[0]
             self.update_board_view()
@@ -619,22 +482,21 @@ class EightPuzzleApp:
             self.btn_next.configure(state="normal")
             self.btn_reset.configure(state="normal")
         else:
-            self.log_to_console("❌ Search failed. Unsolvable configuration.")
+            self.log_to_console("❌ Search failed / unsolvable state.")
             self.stat_status.configure(text="FAILED", fg="#F38BA8")
 
     def on_step_search(self):
         self.stop_all_threads()
         
-        # Solvability check
-        if not self.engine.is_solvable(self.initial_custom_state):
+        if not PuzzleBoard.is_solvable(self.initial_custom_state):
             messagebox.showerror("Error", "The current puzzle is mathematically unsolvable!")
             return
             
-        # Initialize if not already searching
-        if self.engine.state != "searching" and self.engine.state != "solved":
+        # Re-initialize search if idle
+        if self.engine.state not in ("searching", "solved"):
             self.clear_console()
-            self.log_to_console("🔍 Initializing step-by-step search...")
-            self.engine = EightPuzzle(self.initial_custom_state)
+            self.log_to_console(f"🔍 Initializing step-by-step search with {self.selected_algo_name}...")
+            self.engine = SOLVER_REGISTRY[self.selected_algo_name](self.initial_custom_state)
             self.engine.init_search()
             self.stat_status.configure(text="SEARCHING", fg="#F9E2AF")
             
@@ -650,7 +512,8 @@ class EightPuzzleApp:
                 self.stat_depth.configure(text=str(len(self.engine.explored)))
                 
                 if self.engine.state == "solved":
-                    self.stat_status.configure(text="SOLVED", fg="#A6E3A1")
+                    theme = ALGORITHM_THEMES.get(self.selected_algo_name, {"accent": "#A6E3A1"})
+                    self.stat_status.configure(text="SOLVED", fg=theme["accent"])
                     self.stat_depth.configure(text=str(self.engine.path_cost))
                     self.playback_index = 0
                     
@@ -658,28 +521,29 @@ class EightPuzzleApp:
                     self.btn_play.configure(state="normal")
                     self.btn_next.configure(state="normal")
                     self.btn_reset.configure(state="normal")
-                    self.log_to_console("\n🎉 Success! You solved the puzzle manually step-by-step. Playback is now enabled.")
+                    self.log_to_console("\n🎉 Success! You solved the puzzle manually. Playback is now enabled.")
 
     def render_search_step_log(self, step_log):
         node = step_log["node_explored"]
         self.log_to_console("-" * 65)
         self.log_to_console(f"📍 Expanding Node: {node['flat']}")
-        self.log_to_console(f"   Evaluations:  f(n) = {node['f']}   [g(n) = {node['g']}, h(n) = {node['h']} (Misplaced)]")
-        self.log_to_console(f"   Frontier Size: {step_log['frontier_size']}   |   Explored Set Size: {step_log['explored_size']}")
+        self.log_to_console(f"   Evaluations:  g = {node['g']}   |   h = {node['h']}   |   f = {node['f']}")
+        self.log_to_console(f"   Frontier Queue Size: {step_log['frontier_size']}   |   Explored Set: {step_log['explored_size']}")
         
-        # Display Frontier
-        self.log_to_console("   Frontier Open Queue (Priority Order, top 5):")
+        # Display sample from frontier
+        self.log_to_console("   Frontier Open Queue (sample top 5):")
         if not step_log["frontier_sample"]:
             self.log_to_console("     [Empty]")
         for item in step_log["frontier_sample"]:
-            self.log_to_console(f"     • f={item[0]} (g={item[1]}, h={item[2]}) -> State: {item[3]}")
+            # item = (f, g, h, state_flat) or similar layout
+            self.log_to_console(f"     • state: {item[3]} (g={item[1]}, h={item[2]}, f={item[0]})")
             
-        # Display Explored Set Sample
-        self.log_to_console("   Explored Set (Closed List, last 5 expanded):")
+        # Display sample from explored set
+        self.log_to_console("   Explored Set (sample last 5):")
         if not step_log["explored_sample"]:
             self.log_to_console("     [Empty]")
         for item in step_log["explored_sample"]:
-            self.log_to_console(f"     ✓ State: {item}")
+            self.log_to_console(f"     ✓ state: {item}")
         self.log_to_console("")
 
     def toggle_auto_search(self):
@@ -687,31 +551,27 @@ class EightPuzzleApp:
             self.auto_search_running = False
             self.btn_auto_search.configure(text="▶️ Auto Search Steps")
         else:
-            if not self.engine.is_solvable(self.initial_custom_state):
+            if not PuzzleBoard.is_solvable(self.initial_custom_state):
                 messagebox.showerror("Error", "The current puzzle is mathematically unsolvable!")
                 return
             self.stop_all_threads()
             self.auto_search_running = True
             self.btn_auto_search.configure(text="⏸️ Pause Search")
             
-            # Start automatic stepping thread
             threading.Thread(target=self.auto_search_loop, daemon=True).start()
 
     def auto_search_loop(self):
-        # Initialize search if needed
-        if self.engine.state != "searching" and self.engine.state != "solved":
+        if self.engine.state not in ("searching", "solved"):
             self.root.after(0, self.clear_console)
-            self.root.after(0, lambda: self.log_to_console("🔍 Initializing search loop..."))
-            self.engine = EightPuzzle(self.initial_custom_state)
+            self.root.after(0, lambda: self.log_to_console(f"🔍 Initializing auto search with {self.selected_algo_name}..."))
+            self.engine = SOLVER_REGISTRY[self.selected_algo_name](self.initial_custom_state)
             self.engine.init_search()
             self.root.after(0, lambda: self.stat_status.configure(text="SEARCHING", fg="#F9E2AF"))
             time.sleep(0.1)
 
         while self.auto_search_running and self.engine.state == "searching":
-            # Retrieve speed value safely from main thread
             delay = self.speed_scale.get() / 1000.0
             
-            # Perform search step on UI thread via sync execution
             def run_step():
                 if self.engine.state == "searching":
                     step_log = self.engine.step_search()
@@ -725,7 +585,8 @@ class EightPuzzleApp:
                         self.stat_depth.configure(text=str(len(self.engine.explored)))
                         
                         if self.engine.state == "solved":
-                            self.stat_status.configure(text="SOLVED", fg="#A6E3A1")
+                            theme = ALGORITHM_THEMES.get(self.selected_algo_name, {"accent": "#A6E3A1"})
+                            self.stat_status.configure(text="SOLVED", fg=theme["accent"])
                             self.stat_depth.configure(text=str(self.engine.path_cost))
                             self.playback_index = 0
                             
@@ -733,7 +594,7 @@ class EightPuzzleApp:
                             self.btn_play.configure(state="normal")
                             self.btn_next.configure(state="normal")
                             self.btn_reset.configure(state="normal")
-                            self.log_to_console("\n🎉 Success! Auto-Search found the solution path. Playback is now enabled.")
+                            self.log_to_console("\n🎉 Success! Auto-Search found solution path. Playback is now enabled.")
                             self.stop_all_threads()
             
             self.root.after(0, run_step)
@@ -742,7 +603,7 @@ class EightPuzzleApp:
         if self.engine.state != "searching" and self.auto_search_running:
             self.root.after(0, self.stop_all_threads)
 
-    # ----------------- PLAYBACK MECHANISMS -----------------
+    # ----------------- PLAYBACK -----------------
     def on_prev_step(self):
         self.stop_all_threads()
         if self.playback_index > 0:
@@ -779,7 +640,6 @@ class EightPuzzleApp:
     def playback_loop(self):
         while self.auto_solve_running:
             if self.playback_index >= len(self.engine.solution_path) - 1:
-                # Loop completed, reset to start or stop
                 self.root.after(0, self.stop_all_threads)
                 self.root.after(0, lambda: self.log_to_console("🏁 Playback finished!"))
                 break
@@ -795,9 +655,3 @@ class EightPuzzleApp:
                     
             self.root.after(0, run_play)
             time.sleep(delay)
-
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = EightPuzzleApp(root)
-    root.mainloop()
