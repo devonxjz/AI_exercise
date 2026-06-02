@@ -1,18 +1,21 @@
+import random
 from eight_puzzle.solver import BaseSolver
 from eight_puzzle.board import PuzzleBoard
 
-class SteepestAscentHillClimbingSolver(BaseSolver):
+class StochasticHillClimbingSolver(BaseSolver):
     """
-    Adapter implementing Steepest-ascent Hill Climbing (Local Search).
+    Adapter implementing Stochastic Hill Climbing (Local Search).
     Uses Manhattan Distance as the heuristic h(n).
-    Moves to the best neighbor strictly minimizing h(n).
+    Transitions to a randomly chosen neighbor from the set of all neighbors 
+    that strictly improve the heuristic value.
     Stops if no neighbor is strictly better than the current state (local optimum / peak / plateau).
     """
+    def __init__(self, start_state, goal_state=PuzzleBoard.GOAL_STATE, seed=None):
+        super().__init__(start_state, goal_state)
+        # Instantiate a local Random instance if seed is provided, otherwise use global random
+        self.rng = random.Random(seed) if seed is not None else random
+
     def get_manhattan_distance(self, grid):
-        """
-        Heuristic h(n): Manhattan Distance (Sum of absolute vertical and horizontal distances
-        of each tile from its goal position).
-        """
         dist = 0
         goal_pos = {
             1: (0, 0), 2: (0, 1), 3: (0, 2),
@@ -47,21 +50,6 @@ class SteepestAscentHillClimbingSolver(BaseSolver):
             "explored_sample": [[v for r in item for v in r] for item in self.explored_sample]
         }
 
-    def _find_best_neighbor(self, curr_grid):
-        board = PuzzleBoard(curr_grid)
-        best_neighbor = None
-        best_h = float('inf')
-        best_action = None
-
-        # Deterministic tie-breaking (use first best neighbor generated)
-        for neighbor_grid, action in board.get_neighbors():
-            h_val = self.get_manhattan_distance(neighbor_grid)
-            if h_val < best_h:
-                best_h = h_val
-                best_neighbor = neighbor_grid
-                best_action = action
-        return best_neighbor, best_h, best_action
-
     def step_search(self):
         if self.state != "searching":
             return None
@@ -82,17 +70,25 @@ class SteepestAscentHillClimbingSolver(BaseSolver):
             self.reconstruct_path()
             log_entry["status"] = "solved"
             log_entry["solution_length"] = len(self.solution_path) - 1
-            log_entry["log"] = f"🎯 Success! Goal state reached via Hill Climbing.\nPath length: {len(self.solution_path) - 1} moves.\nNodes expanded: {self.nodes_expanded}"
+            log_entry["log"] = f"🎯 Success! Goal state reached via Stochastic Hill Climbing.\nPath length: {len(self.solution_path) - 1} moves.\nNodes expanded: {self.nodes_expanded}"
             return log_entry
 
-        best_neighbor, best_h, best_action = self._find_best_neighbor(curr_grid)
+        board = PuzzleBoard(curr_grid)
+        improving_neighbors = []
 
-        # Steepest-ascent climbing condition: must strictly improve heuristic
-        if best_neighbor is not None and best_h < h_curr:
-            self.parent_map[best_neighbor] = (curr_grid, best_action)
-            self.g_map[best_neighbor] = g_curr + 1
-            self.current_state = best_neighbor
-            self.frontier = [best_neighbor]
+        # Find all neighbors that strictly improve heuristic
+        for neighbor_grid, action in board.get_neighbors():
+            h_val = self.get_manhattan_distance(neighbor_grid)
+            if h_val < h_curr:
+                improving_neighbors.append((neighbor_grid, action, h_val))
+
+        if improving_neighbors:
+            # Choose one randomly
+            selected_grid, selected_action, selected_h = self.rng.choice(improving_neighbors)
+            self.parent_map[selected_grid] = (curr_grid, selected_action)
+            self.g_map[selected_grid] = g_curr + 1
+            self.current_state = selected_grid
+            self.frontier = [selected_grid]
             self.max_frontier_size = max(self.max_frontier_size, len(self.frontier))
             return log_entry
 
@@ -101,7 +97,3 @@ class SteepestAscentHillClimbingSolver(BaseSolver):
         log_entry["status"] = "failed"
         log_entry["log"] = f"❌ Stuck in local optimum at state {flat_curr} (h={h_curr}). No neighbor improves heuristic."
         return log_entry
-
-# For backwards compatibility
-HillClimbingSolver = SteepestAscentHillClimbingSolver
-

@@ -482,6 +482,10 @@ class EightPuzzleApp:
             self.btn_next.configure(state="normal")
             self.btn_reset.configure(state="normal")
         else:
+            if logs:
+                last = logs[-1]
+                if "log" in last:
+                    self.log_to_console(last["log"])
             self.log_to_console("❌ Search failed / unsolvable state.")
             self.stat_status.configure(text="FAILED", fg="#F38BA8")
 
@@ -522,6 +526,11 @@ class EightPuzzleApp:
                     self.btn_next.configure(state="normal")
                     self.btn_reset.configure(state="normal")
                     self.log_to_console("\n🎉 Success! You solved the puzzle manually. Playback is now enabled.")
+                elif self.engine.state == "unsolvable":
+                    self.stat_status.configure(text="FAILED", fg="#F38BA8")
+                    if "log" in step_log:
+                        self.log_to_console(step_log["log"])
+                    self.log_to_console("❌ Search failed / unsolvable state.")
 
     def render_search_step_log(self, step_log):
         node = step_log["node_explored"]
@@ -595,6 +604,12 @@ class EightPuzzleApp:
                             self.btn_next.configure(state="normal")
                             self.btn_reset.configure(state="normal")
                             self.log_to_console("\n🎉 Success! Auto-Search found solution path. Playback is now enabled.")
+                            self.stop_all_threads()
+                        elif self.engine.state == "unsolvable":
+                            self.stat_status.configure(text="FAILED", fg="#F38BA8")
+                            if "log" in step_log:
+                                self.log_to_console(step_log["log"])
+                            self.log_to_console("❌ Search failed / unsolvable state.")
                             self.stop_all_threads()
             
             self.root.after(0, run_step)
