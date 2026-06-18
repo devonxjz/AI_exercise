@@ -7,6 +7,10 @@ from eight_puzzle.algorithms.hill_climbing import HillClimbingSolver, SteepestAs
 from eight_puzzle.algorithms.simple_hill_climbing import SimpleHillClimbingSolver
 from eight_puzzle.algorithms.stochastic_hill_climbing import StochasticHillClimbingSolver
 from eight_puzzle.algorithms.local_beam_search import LocalBeamSearchSolver
+from eight_puzzle.algorithms.simulated_annealing import SimulatedAnnealingSolver
+from eight_puzzle.algorithms.backtracking_mrv import BacktrackingMRVSolver
+from eight_puzzle.algorithms.min_conflicts import MinConflictsSolver
+from eight_puzzle.algorithms.ac3 import AC3Solver
 
 # Manual Registry of Solvers
 SOLVER_REGISTRY = {
@@ -19,7 +23,11 @@ SOLVER_REGISTRY = {
     "Simple Hill Climbing": SimpleHillClimbingSolver,
     "Steepest-ascent Hill Climbing": SteepestAscentHillClimbingSolver,
     "Stochastic Hill Climbing": StochasticHillClimbingSolver,
-    "Local Beam Search": LocalBeamSearchSolver
+    "Local Beam Search": LocalBeamSearchSolver,
+    "Simulated Annealing": SimulatedAnnealingSolver,
+    "Backtracking with MRV": BacktrackingMRVSolver,
+    "Min-Conflicts": MinConflictsSolver,
+    "AC-3": AC3Solver
 }
 
 # Theme definitions for each algorithm
@@ -73,7 +81,28 @@ ALGORITHM_THEMES = {
         "accent": "#89DCEB",      # Sky Blue
         "accent_bg": "#25373B",
         "description": "Heuristic: Manhattan Distance (Local Beam Search - width k=3)"
+    },
+    "Simulated Annealing": {
+        "accent": "#F5E0DC",      # Rosewater
+        "accent_bg": "#3B2F2F",
+        "description": "Heuristic: Manhattan Distance (Simulated Annealing - T₀=100, α=0.995, Tmin=0.001)"
+    },
+    "Backtracking with MRV": {
+        "accent": "#F5A97F",      # Pastel Peach/Orange
+        "accent_bg": "#382A25",
+        "description": "CSP Search: Backtracking with MRV (Fail-First Heuristic)"
+    },
+    "Min-Conflicts": {
+        "accent": "#EE99A0",      # Pastel Maroon/Red
+        "accent_bg": "#3F2C32",
+        "description": "CSP Local Search: Min-Conflicts (Minimizes misplaced tiles)"
+    },
+    "AC-3": {
+        "accent": "#C6A0F6",      # Pastel Lavender/Purple
+        "accent_bg": "#3E2E4F",
+        "description": "CSP Consistency: AC-3 Constraint Propagation (Iterative Deepening)"
     }
 }
+
 
 
