@@ -11,6 +11,9 @@ from eight_puzzle.algorithms.simulated_annealing import SimulatedAnnealingSolver
 from eight_puzzle.algorithms.backtracking_mrv import BacktrackingMRVSolver
 from eight_puzzle.algorithms.min_conflicts import MinConflictsSolver
 from eight_puzzle.algorithms.ac3 import AC3Solver
+from eight_puzzle.algorithms.minimax import MinimaxSolver
+from eight_puzzle.algorithms.alpha_beta import AlphaBetaSolver
+from eight_puzzle.algorithms.expectimax import ExpectimaxSolver
 
 # Manual Registry of Solvers
 SOLVER_REGISTRY = {
@@ -27,7 +30,10 @@ SOLVER_REGISTRY = {
     "Simulated Annealing": SimulatedAnnealingSolver,
     "Backtracking with MRV": BacktrackingMRVSolver,
     "Min-Conflicts": MinConflictsSolver,
-    "AC-3": AC3Solver
+    "AC-3": AC3Solver,
+    "Minimax (Adversarial Search)": MinimaxSolver,
+    "Alpha-Beta Pruning": AlphaBetaSolver,
+    "Expectimax (Chance Search)": ExpectimaxSolver
 }
 
 # Theme definitions for each algorithm
@@ -101,6 +107,21 @@ ALGORITHM_THEMES = {
         "accent": "#C6A0F6",      # Pastel Lavender/Purple
         "accent_bg": "#3E2E4F",
         "description": "CSP Consistency: AC-3 Constraint Propagation (Iterative Deepening)"
+    },
+    "Minimax (Adversarial Search)": {
+        "accent": "#A6E3A1",      # Pastel Green
+        "accent_bg": "#253825",
+        "description": "Adversarial: Minimax lookahead search (depth d=3)"
+    },
+    "Alpha-Beta Pruning": {
+        "accent": "#F5C2E7",      # Pastel Pink
+        "accent_bg": "#382535",
+        "description": "Adversarial: Minimax with Alpha-Beta Pruning (depth d=3)"
+    },
+    "Expectimax (Chance Search)": {
+        "accent": "#89B4FA",      # Pastel Blue
+        "accent_bg": "#252B38",
+        "description": "Adversarial/Chance: Expectimax lookahead search (depth d=3)"
     }
 }
 
